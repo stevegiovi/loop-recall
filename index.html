@@ -1424,7 +1424,7 @@ body {
 
 <script>
 // ============================================================
-const APP_VERSION = "2.1.12";
+const APP_VERSION = "2.1.13";
 // DATA: Leadership Principles
 // ============================================================
 const LEADERSHIP_PRINCIPLES = [
@@ -1696,29 +1696,23 @@ async function handleSignUp() {
 // SUPABASE DATA SYNC
 // ============================================================
 async function loadFromSupabase() {
-  if (!currentUser) return false;
+  if (!currentUser || !supa) return false;
   try {
     const { data, error } = await supa
       .from('user_settings')
-      .select('app_data')
+      .select('*')
       .eq('user_id', currentUser.id)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code === 'PGRST116') {
-      // No settings row yet — create one with current localStorage data
-      const localSaved = localStorage.getItem(STORAGE_KEY);
-      const appData = localSaved ? JSON.parse(localSaved) : {};
-      await supa.from('user_settings').insert({
-        user_id: currentUser.id,
-        app_data: appData,
-      });
-      return !!localSaved;
+    if (error) {
+      console.warn('Supabase load error:', error.message);
+      return false;
     }
 
-    if (error) throw error;
+    if (!data) return false;
 
-    if (data && data.app_data && Object.keys(data.app_data).length > 0) {
-      const d = data.app_data;
+    const d = data.app_data && typeof data.app_data === 'object' && Object.keys(data.app_data).length > 0 ? data.app_data : null;
+    if (d) {
       if (d.stories) state.stories = d.stories;
       if (d.interviewers && d.interviewers.length) state.interviewers = d.interviewers;
       if (d.usages) state.usages = d.usages;
@@ -1729,19 +1723,18 @@ async function loadFromSupabase() {
       if (d.jobDescription) state.jobDescription = d.jobDescription;
       if (d.onboardingComplete) state.onboardingComplete = d.onboardingComplete;
       if (d.marketPOV) state.marketPOV = d.marketPOV;
-      // Also save to localStorage as cache
       localStorage.setItem(STORAGE_KEY, JSON.stringify(d));
       return true;
     }
     return false;
   } catch(e) {
-    console.warn('Supabase load failed, falling back to localStorage', e);
+    console.warn('Supabase load failed:', e);
     return false;
   }
 }
 
 function syncToSupabase() {
-  if (!currentUser) return;
+  if (!currentUser || !supa) return;
   clearTimeout(syncTimeout);
   syncTimeout = setTimeout(async () => {
     try {
@@ -1753,21 +1746,22 @@ function syncToSupabase() {
         roleDescription: state.roleDescription,
         resumeText: state.resumeText,
         theme: state.theme,
-      jobDescription: state.jobDescription,
-      onboardingComplete: state.onboardingComplete,
-      marketPOV: state.marketPOV,
+        jobDescription: state.jobDescription,
+        onboardingComplete: state.onboardingComplete,
+        marketPOV: state.marketPOV,
       };
-      await supa
+      const { error } = await supa
         .from('user_settings')
         .upsert({
           user_id: currentUser.id,
           app_data: appData,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id' });
+      if (error) console.warn('Supabase sync error:', error.message);
     } catch(e) {
-      console.warn('Supabase sync failed', e);
+      console.warn('Supabase sync failed:', e);
     }
-  }, 1500); // Debounce 1.5s
+  }, 1500);
 }
 
 let appInitialized = false;
@@ -1878,8 +1872,10 @@ function renderOnboarding() {
 function skipOnboarding() {
   state.onboardingComplete = true;
   saveState();
-  appInitialized = false;
-  initApp();
+  appInitialized = true;
+  document.body.innerHTML = '<div id="app" class="app"></div>';
+  attachKeyboardListener();
+  render();
 }
 
 function launchWizard() {
@@ -2006,8 +2002,12 @@ If LinkedIn data is provided, use it to build a detailed career trajectory, iden
   state.selectedInterviewerId = named[0].id;
   saveState();
 
-  // Launch the app
-  await initApp();
+  // Launch the app directly — don't call initApp() which would re-load from Supabase
+  // and overwrite the data we just generated
+  appInitialized = true;
+  document.body.innerHTML = '<div id="app" class="app"></div>';
+  attachKeyboardListener();
+  render();
 }
 
 async function generateMarketPOV() {
