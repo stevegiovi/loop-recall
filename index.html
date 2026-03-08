@@ -1424,7 +1424,7 @@ body {
 
 <script>
 // ============================================================
-const APP_VERSION = "2.1.15";
+const APP_VERSION = "2.1.17";
 // DATA: Leadership Principles
 // ============================================================
 const LEADERSHIP_PRINCIPLES = [
@@ -1602,23 +1602,14 @@ let signingOut = false;
 
 async function signOut() {
   signingOut = true;
+  localStorage.removeItem(STORAGE_KEY);
   try {
     await supa.auth.signOut();
   } catch(e) {
     console.warn('Sign out error:', e);
   }
-  currentUser = null;
-  appInitialized = false;
-  state.stories = [];
-  state.interviewers = state.interviewers.map(i => ({...i}));
-  state.usages = [];
-  state.pinnedStoryIds = [];
-  state.onboardingComplete = false;
-  state.jobDescription = '';
-  state.marketPOV = null;
-  localStorage.removeItem(STORAGE_KEY);
-  signingOut = false;
-  renderAuthScreen();
+  // Force full reload — cleanest way to reset everything
+  window.location.reload();
 }
 
 function renderAuthScreen(mode) {
@@ -1633,6 +1624,11 @@ function renderAuthScreen(mode) {
         <div id="auth-form">
           ${authMode === 'signup' ? `
             <div style="display:flex;flex-direction:column;gap:12px">
+              <button class="auth-btn auth-btn-secondary" style="display:flex;align-items:center;justify-content:center;gap:10px" onclick="handleGoogleSignIn()">
+                <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                Continue with Google
+              </button>
+              <div style="display:flex;align-items:center;gap:12px;color:var(--text3);font-size:12px"><div style="flex:1;height:1px;background:var(--border)"></div>or<div style="flex:1;height:1px;background:var(--border)"></div></div>
               <input class="auth-input" id="auth-email" type="email" placeholder="Email address" />
               <input class="auth-input" id="auth-password" type="password" placeholder="Password (min 6 characters)" />
               <input class="auth-input" id="auth-password2" type="password" placeholder="Confirm password" />
@@ -1641,6 +1637,11 @@ function renderAuthScreen(mode) {
             </div>
           ` : `
             <div style="display:flex;flex-direction:column;gap:12px">
+              <button class="auth-btn auth-btn-secondary" style="display:flex;align-items:center;justify-content:center;gap:10px" onclick="handleGoogleSignIn()">
+                <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                Continue with Google
+              </button>
+              <div style="display:flex;align-items:center;gap:12px;color:var(--text3);font-size:12px"><div style="flex:1;height:1px;background:var(--border)"></div>or<div style="flex:1;height:1px;background:var(--border)"></div></div>
               <input class="auth-input" id="auth-email" type="email" placeholder="Email address" />
               <input class="auth-input" id="auth-password" type="password" placeholder="Password" />
               <button class="auth-btn auth-btn-primary" onclick="handleSignIn()">Sign In</button>
@@ -1700,6 +1701,24 @@ async function handleSignUp() {
   } catch(e) {
     errEl.textContent = e.message || 'Sign up failed';
     errEl.style.display = 'block';
+  }
+}
+
+async function handleGoogleSignIn() {
+  try {
+    const { error } = await supa.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.href.split('?')[0],
+      }
+    });
+    if (error) throw error;
+  } catch(e) {
+    const errEl = document.getElementById('auth-error');
+    if (errEl) {
+      errEl.textContent = e.message || 'Google sign in failed';
+      errEl.style.display = 'block';
+    }
   }
 }
 
@@ -2550,8 +2569,8 @@ function render() {
         <button class="sidebar-action-btn" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="newStory()">＋ New Story</button>
         <button class="sidebar-action-btn" style="background:#8b5cf6;color:#fff;border-color:#8b5cf6" onclick="openAIImport()">🤖 AI Story Generator</button>
         <button class="sidebar-action-btn" onclick="openModal('import')">📥 Import CSV</button>
-        <button class="sidebar-action-btn" onclick="exportAllData()">💾 Export All</button>
-        <button class="sidebar-action-btn" onclick="triggerImportAll()">📂 Import All</button>
+        <button class="sidebar-action-btn" onclick="exportAllData()">💾 Export Stories</button>
+        <button class="sidebar-action-btn" onclick="triggerImportAll()">📂 Import Stories</button>
         <button class="sidebar-action-btn" onclick="openModal('settings')">⚙️ Settings</button>
         <button class="sidebar-action-btn" onclick="openModal('coverage')">📊 Coverage</button>
         <button class="sidebar-action-btn" onclick="openMarketPOV()">🌎 Market POV</button>
@@ -3605,33 +3624,39 @@ function renderStoryEditor() {
 // EXPORT / IMPORT ALL DATA
 // ============================================================
 function exportAllData() {
+  if (state.stories.length === 0) { showToast('No stories to export'); return; }
   const exportData = {
     _loopRecallExport: true,
+    _type: 'stories',
     _version: APP_VERSION,
     _exportedAt: new Date().toISOString(),
-    _email: currentUser ? currentUser.email : 'local',
-    stories: state.stories,
-    interviewers: state.interviewers,
-    usages: state.usages,
-    pinnedStoryIds: state.pinnedStoryIds,
-    roleDescription: state.roleDescription,
-    resumeText: state.resumeText,
-    jobDescription: state.jobDescription,
-    marketPOV: state.marketPOV,
-    onboardingComplete: state.onboardingComplete,
-    theme: state.theme,
+    _count: state.stories.length,
+    stories: state.stories.map(s => ({
+      id: s.id,
+      title: s.title,
+      company: s.company,
+      primaryLP: s.primaryLP,
+      secondaryLPs: s.secondaryLPs,
+      keywords: s.keywords,
+      situation: s.situation,
+      task: s.task,
+      action: s.action,
+      result: s.result,
+      relevance: s.relevance,
+      fullStory: s.fullStory,
+    })),
   };
   const json = JSON.stringify(exportData, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `loop-recall-export-${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `loop-recall-stories-${new Date().toISOString().slice(0,10)}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast('Full backup exported');
+  showToast(`Exported ${state.stories.length} stories`);
 }
 
 function triggerImportAll() {
@@ -3645,35 +3670,32 @@ function triggerImportAll() {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target.result);
-        if (!data._loopRecallExport) {
-          showToast('Invalid file — not a Loop Recall export');
+        if (!data._loopRecallExport || !data.stories) {
+          showToast('Invalid file — not a Loop Recall stories export');
           return;
         }
-        const counts = {
-          stories: (data.stories || []).length,
-          interviewers: (data.interviewers || []).filter(i => i.name).length,
-          usages: (data.usages || []).length,
-        };
-        if (!confirm(`Import ${counts.stories} stories, ${counts.interviewers} interviewers, and ${counts.usages} usage records?\n\nThis will REPLACE all current data.`)) return;
+        const count = data.stories.length;
+        if (!confirm(`Import ${count} stories?\n\nThis will ADD to your existing stories. Duplicates (same title + company) will be skipped.`)) return;
 
-        if (data.stories) state.stories = data.stories;
-        if (data.interviewers) state.interviewers = data.interviewers;
-        if (data.usages) state.usages = data.usages;
-        if (data.pinnedStoryIds) state.pinnedStoryIds = data.pinnedStoryIds;
-        if (data.roleDescription !== undefined) state.roleDescription = data.roleDescription;
-        if (data.resumeText !== undefined) state.resumeText = data.resumeText;
-        if (data.jobDescription !== undefined) state.jobDescription = data.jobDescription;
-        if (data.marketPOV !== undefined) state.marketPOV = data.marketPOV;
-        if (data.onboardingComplete !== undefined) state.onboardingComplete = data.onboardingComplete;
-        if (data.theme) state.theme = data.theme;
-
-        if (state.interviewers.some(i => i.name)) {
-          state.selectedInterviewerId = state.interviewers.find(i => i.name).id;
+        const existingKeys = new Set(state.stories.map(s => (s.title + '||' + s.company).toLowerCase()));
+        let added = 0;
+        let skipped = 0;
+        for (const s of data.stories) {
+          const key = ((s.title || '') + '||' + (s.company || '')).toLowerCase();
+          if (existingKeys.has(key)) {
+            skipped++;
+            continue;
+          }
+          // Ensure each imported story gets a unique ID
+          s.id = s.id || ('story-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7));
+          state.stories.push(s);
+          existingKeys.add(key);
+          added++;
         }
 
         saveState();
         render();
-        showToast(`Imported ${counts.stories} stories, ${counts.interviewers} interviewers`);
+        showToast(`Imported ${added} stories` + (skipped ? `, ${skipped} duplicates skipped` : ''));
       } catch(err) {
         showToast('Import failed: ' + err.message);
       }
