@@ -1424,6 +1424,7 @@ body {
 
 <script>
 // ============================================================
+const APP_VERSION = "2.1.12";
 // DATA: Leadership Principles
 // ============================================================
 const LEADERSHIP_PRINCIPLES = [
@@ -1616,6 +1617,7 @@ function renderAuthScreen(mode) {
       <div class="auth-card">
         <div class="auth-logo">⚡ Loop Recall</div>
         <div class="auth-subtitle">Amazon Interview Story Engine</div>
+        <div style="font-size:11px;color:var(--text3);text-align:center">v${APP_VERSION}</div>
         <div class="auth-error" id="auth-error"></div>
         <div id="auth-form">
           ${authMode === 'signup' ? `
@@ -2517,7 +2519,7 @@ function render() {
   app.innerHTML = `
     <!-- SIDEBAR -->
     <div class="sidebar">
-      <div class="sidebar-logo">⚡ Loop Recall <span>v1</span></div>
+      <div class="sidebar-logo">⚡ Loop Recall <span>v${APP_VERSION}</span></div>
       <div class="sidebar-section">Interviewers</div>
       ${state.interviewers.filter(int => int.name).length === 0 ? `
         <button class="sidebar-action-btn" style="background:#8b5cf6;color:#fff;border-color:#8b5cf6;margin:4px 0 8px" onclick="launchWizard()">🎯 Run Setup Wizard</button>
