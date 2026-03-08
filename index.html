@@ -1891,9 +1891,18 @@ async function handleWizardFile(intId, input) {
   const file = input.files[0];
   try {
     const text = await extractPDFText(file);
-    // Extract name from first line of LinkedIn PDF (usually the person's name)
+    // LinkedIn PDFs: name is typically a short line (2-4 words) near the top
+    // Skip lines with URLs, emails, "(LinkedIn)", "(Company)", "Contact", "Top Skills", etc.
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 1);
-    const nameGuess = lines[0] || file.name.replace('.pdf', '');
+    const skipPatterns = /www\.|http|\.com|@|\(LinkedIn\)|\(Company\)|Contact|Top Skills|Summary|Experience|Education|Page /i;
+    let nameGuess = file.name.replace('.pdf', '').replace(/_/g, ' ');
+    for (const line of lines) {
+      const words = line.split(/\s+/);
+      if (words.length >= 2 && words.length <= 5 && line.length < 50 && !skipPatterns.test(line)) {
+        nameGuess = line;
+        break;
+      }
+    }
     wizardInterviewerFiles[intId] = { name: file.name, text: text, extractedName: nameGuess };
     renderOnboarding();
   } catch(e) {
@@ -1975,6 +1984,7 @@ If LinkedIn data is provided, use it to build a detailed career trajectory, iden
       const result = await callClaude(systemPrompt, userMsg, 4000);
       const parsed = JSON.parse(result);
       int.cheatsheet = parsed;
+      int.name = parsed.name || int.name;
       int.role = parsed.title || int.role;
     } catch(e) {
       console.error('Failed to generate profile for', int.name, e);
@@ -2516,7 +2526,7 @@ function render() {
         <div style="display:flex;align-items:center;gap:4px">
           <button class="interviewer-btn ${int.id === state.selectedInterviewerId ? 'active' : ''}"
                   onclick="selectInterviewer('${int.id}')" style="flex:1">
-            <span>${escapeHtml(int.name)}</span>
+            <span>${escapeHtml(int.name.length > 30 ? int.name.slice(0, 30) + '…' : int.name)}</span>
             <span class="used-count">${usedCount(int.id)}</span>
           </button>
           ${getCheatsheet(int.id) ? `<button class="cs-info-btn" onclick="openCheatSheet('${int.id}', event)" title="View cheat sheet">📋</button>` : ''}
