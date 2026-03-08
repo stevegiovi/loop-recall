@@ -1424,7 +1424,7 @@ body {
 
 <script>
 // ============================================================
-const APP_VERSION = "2.1.14";
+const APP_VERSION = "2.1.15";
 // DATA: Leadership Principles
 // ============================================================
 const LEADERSHIP_PRINCIPLES = [
@@ -1598,15 +1598,26 @@ async function signIn(email, password) {
   return data;
 }
 
+let signingOut = false;
+
 async function signOut() {
-  await supa.auth.signOut();
+  signingOut = true;
+  try {
+    await supa.auth.signOut();
+  } catch(e) {
+    console.warn('Sign out error:', e);
+  }
   currentUser = null;
   appInitialized = false;
   state.stories = [];
   state.interviewers = state.interviewers.map(i => ({...i}));
   state.usages = [];
   state.pinnedStoryIds = [];
+  state.onboardingComplete = false;
+  state.jobDescription = '';
+  state.marketPOV = null;
   localStorage.removeItem(STORAGE_KEY);
+  signingOut = false;
   renderAuthScreen();
 }
 
@@ -2537,7 +2548,7 @@ function render() {
 
       <div class="sidebar-actions">
         <button class="sidebar-action-btn" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="newStory()">＋ New Story</button>
-        <button class="sidebar-action-btn" style="background:#8b5cf6;color:#fff;border-color:#8b5cf6" onclick="openAIImport()">🤖 AI Format</button>
+        <button class="sidebar-action-btn" style="background:#8b5cf6;color:#fff;border-color:#8b5cf6" onclick="openAIImport()">🤖 AI Story Generator</button>
         <button class="sidebar-action-btn" onclick="openModal('import')">📥 Import CSV</button>
         <button class="sidebar-action-btn" onclick="exportAllData()">💾 Export All</button>
         <button class="sidebar-action-btn" onclick="triggerImportAll()">📂 Import All</button>
@@ -3238,7 +3249,7 @@ function openAIImport() {
   overlay.innerHTML = `
     <div class="ai-panel">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:22px;font-weight:800">🤖 AI Story Formatter</div>
+        <div style="font-size:22px;font-weight:800">🤖 AI Story Generator</div>
         <button class="detail-btn" onclick="closeAIImport()">✕</button>
       </div>
       <div style="font-size:13px;color:var(--text2);line-height:1.5">
@@ -3365,7 +3376,7 @@ Rules:
     showToast('Story formatted — review and save');
 
   } catch (err) {
-    console.error('AI Format error:', err);
+    console.error('AI Generator error:', err);
     statusArea.innerHTML = `<div class="ai-status" style="color:var(--red)">❌ Error: ${escapeHtml(err.message)}</div>`;
     btn.disabled = false;
     btn.textContent = '🤖 Format with Claude';
@@ -4346,6 +4357,7 @@ document.addEventListener('keydown', (e) => {
     supa.auth.onAuthStateChange(async (event, session) => {
       try {
         console.log('Auth state change:', event);
+        if (signingOut) return; // Ignore events during sign out
         if (event === 'SIGNED_OUT') {
           currentUser = null;
           appInitialized = false;
