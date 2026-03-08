@@ -1424,7 +1424,7 @@ body {
 
 <script>
 // ============================================================
-const APP_VERSION = "2.1.13";
+const APP_VERSION = "2.1.14";
 // DATA: Leadership Principles
 // ============================================================
 const LEADERSHIP_PRINCIPLES = [
@@ -2539,6 +2539,8 @@ function render() {
         <button class="sidebar-action-btn" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="newStory()">＋ New Story</button>
         <button class="sidebar-action-btn" style="background:#8b5cf6;color:#fff;border-color:#8b5cf6" onclick="openAIImport()">🤖 AI Format</button>
         <button class="sidebar-action-btn" onclick="openModal('import')">📥 Import CSV</button>
+        <button class="sidebar-action-btn" onclick="exportAllData()">💾 Export All</button>
+        <button class="sidebar-action-btn" onclick="triggerImportAll()">📂 Import All</button>
         <button class="sidebar-action-btn" onclick="openModal('settings')">⚙️ Settings</button>
         <button class="sidebar-action-btn" onclick="openModal('coverage')">📊 Coverage</button>
         <button class="sidebar-action-btn" onclick="openMarketPOV()">🌎 Market POV</button>
@@ -3588,6 +3590,88 @@ function renderStoryEditor() {
 // ============================================================
 // PRINT CARDS
 // ============================================================
+// ============================================================
+// EXPORT / IMPORT ALL DATA
+// ============================================================
+function exportAllData() {
+  const exportData = {
+    _loopRecallExport: true,
+    _version: APP_VERSION,
+    _exportedAt: new Date().toISOString(),
+    _email: currentUser ? currentUser.email : 'local',
+    stories: state.stories,
+    interviewers: state.interviewers,
+    usages: state.usages,
+    pinnedStoryIds: state.pinnedStoryIds,
+    roleDescription: state.roleDescription,
+    resumeText: state.resumeText,
+    jobDescription: state.jobDescription,
+    marketPOV: state.marketPOV,
+    onboardingComplete: state.onboardingComplete,
+    theme: state.theme,
+  };
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `loop-recall-export-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Full backup exported');
+}
+
+function triggerImportAll() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data._loopRecallExport) {
+          showToast('Invalid file — not a Loop Recall export');
+          return;
+        }
+        const counts = {
+          stories: (data.stories || []).length,
+          interviewers: (data.interviewers || []).filter(i => i.name).length,
+          usages: (data.usages || []).length,
+        };
+        if (!confirm(`Import ${counts.stories} stories, ${counts.interviewers} interviewers, and ${counts.usages} usage records?\n\nThis will REPLACE all current data.`)) return;
+
+        if (data.stories) state.stories = data.stories;
+        if (data.interviewers) state.interviewers = data.interviewers;
+        if (data.usages) state.usages = data.usages;
+        if (data.pinnedStoryIds) state.pinnedStoryIds = data.pinnedStoryIds;
+        if (data.roleDescription !== undefined) state.roleDescription = data.roleDescription;
+        if (data.resumeText !== undefined) state.resumeText = data.resumeText;
+        if (data.jobDescription !== undefined) state.jobDescription = data.jobDescription;
+        if (data.marketPOV !== undefined) state.marketPOV = data.marketPOV;
+        if (data.onboardingComplete !== undefined) state.onboardingComplete = data.onboardingComplete;
+        if (data.theme) state.theme = data.theme;
+
+        if (state.interviewers.some(i => i.name)) {
+          state.selectedInterviewerId = state.interviewers.find(i => i.name).id;
+        }
+
+        saveState();
+        render();
+        showToast(`Imported ${counts.stories} stories, ${counts.interviewers} interviewers`);
+      } catch(err) {
+        showToast('Import failed: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
 function printStories() {
   if (state.stories.length === 0) { showToast('No stories to print'); return; }
 
