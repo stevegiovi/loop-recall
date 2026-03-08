@@ -1424,7 +1424,7 @@ body {
 
 <script>
 // ============================================================
-const APP_VERSION = "2.1.17";
+const APP_VERSION = "2.1.19";
 // DATA: Leadership Principles
 // ============================================================
 const LEADERSHIP_PRINCIPLES = [
@@ -1603,12 +1603,15 @@ let signingOut = false;
 async function signOut() {
   signingOut = true;
   localStorage.removeItem(STORAGE_KEY);
+  // Clear all Supabase auth storage
+  Object.keys(localStorage).forEach(key => {
+    if (key.startsWith('sb-')) localStorage.removeItem(key);
+  });
   try {
-    await supa.auth.signOut();
+    await supa.auth.signOut({ scope: 'local' });
   } catch(e) {
     console.warn('Sign out error:', e);
   }
-  // Force full reload — cleanest way to reset everything
   window.location.reload();
 }
 
@@ -1709,7 +1712,10 @@ async function handleGoogleSignIn() {
     const { error } = await supa.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.href.split('?')[0],
+        redirectTo: window.location.href.split('?')[0].split('#')[0],
+        queryParams: {
+          prompt: 'select_account',
+        },
       }
     });
     if (error) throw error;
@@ -1912,6 +1918,18 @@ function launchWizard() {
   wizardStep = 1;
   appInitialized = false;
   renderOnboarding();
+}
+
+function moveInterviewer(intId, direction) {
+  const idx = state.interviewers.findIndex(i => i.id === intId);
+  if (idx < 0) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= state.interviewers.length) return;
+  const temp = state.interviewers[idx];
+  state.interviewers[idx] = state.interviewers[newIdx];
+  state.interviewers[newIdx] = temp;
+  saveState();
+  render();
 }
 
 async function handleWizardFile(intId, input) {
@@ -2554,8 +2572,12 @@ function render() {
       ${state.interviewers.filter(int => int.name).length === 0 ? `
         <button class="sidebar-action-btn" style="background:#8b5cf6;color:#fff;border-color:#8b5cf6;margin:4px 0 8px" onclick="launchWizard()">🎯 Run Setup Wizard</button>
       ` : ''}
-      ${state.interviewers.filter(int => int.name).map(int => `
+      ${state.interviewers.filter(int => int.name).map((int, idx, arr) => `
         <div style="display:flex;align-items:center;gap:4px">
+          <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0">
+            <button style="background:none;border:none;color:${idx === 0 ? 'var(--bg3)' : 'var(--text3)'};cursor:${idx === 0 ? 'default' : 'pointer'};font-size:10px;padding:0;line-height:1" ${idx === 0 ? 'disabled' : `onclick="moveInterviewer('${int.id}',-1)"`}>▲</button>
+            <button style="background:none;border:none;color:${idx === arr.length - 1 ? 'var(--bg3)' : 'var(--text3)'};cursor:${idx === arr.length - 1 ? 'default' : 'pointer'};font-size:10px;padding:0;line-height:1" ${idx === arr.length - 1 ? 'disabled' : `onclick="moveInterviewer('${int.id}',1)"`}>▼</button>
+          </div>
           <button class="interviewer-btn ${int.id === state.selectedInterviewerId ? 'active' : ''}"
                   onclick="selectInterviewer('${int.id}')" style="flex:1">
             <span>${escapeHtml(int.name.length > 30 ? int.name.slice(0, 30) + '…' : int.name)}</span>
