@@ -6,7 +6,8 @@
 <title>Loop Recall — Amazon Interview Story Engine</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>if(!window.supabase)document.write('<scr'+'ipt src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"><\/scr'+'ipt>');</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 <style>
@@ -1545,11 +1546,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 let supa = null;
 try {
-  const sb = window.supabase || window.Supabase;
-  if (sb && sb.createClient) {
-    supa = sb.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const sbLib = window.supabase || window.Supabase;
+  const createFn = sbLib && (sbLib.createClient || (sbLib.default && sbLib.default.createClient));
+  if (createFn) {
+    supa = createFn(SUPABASE_URL, SUPABASE_ANON_KEY);
+    console.log('Supabase client created successfully');
   } else {
-    console.error('Supabase library not found on window');
+    console.error('Supabase library loaded but createClient not found. window.supabase:', typeof window.supabase, 'keys:', window.supabase ? Object.keys(window.supabase).slice(0,5) : 'N/A');
   }
 } catch(e) {
   console.error('Supabase init failed:', e);
@@ -1877,6 +1880,12 @@ function skipOnboarding() {
   initApp();
 }
 
+function launchWizard() {
+  wizardStep = 1;
+  appInitialized = false;
+  renderOnboarding();
+}
+
 async function handleWizardFile(intId, input) {
   if (input.files.length === 0) return;
   const file = input.files[0];
@@ -2016,16 +2025,13 @@ async function initApp() {
     loadState();
   }
 
-  // Show wizard only for brand-new accounts (no stories AND no named interviewers)
-  const hasData = state.stories.length > 0 || state.interviewers.some(i => i.name);
-  if (!state.onboardingComplete && !hasData) {
+  // Always show wizard for accounts that haven't completed it
+  if (!state.onboardingComplete) {
     renderOnboarding();
     return;
   }
 
-  state.onboardingComplete = true;
   appInitialized = true;
-
   document.body.innerHTML = '<div id="app" class="app"></div>';
   attachKeyboardListener();
   render();
@@ -2503,6 +2509,9 @@ function render() {
     <div class="sidebar">
       <div class="sidebar-logo">⚡ Loop Recall <span>v1</span></div>
       <div class="sidebar-section">Interviewers</div>
+      ${state.interviewers.filter(int => int.name).length === 0 ? `
+        <button class="sidebar-action-btn" style="background:#8b5cf6;color:#fff;border-color:#8b5cf6;margin:4px 0 8px" onclick="launchWizard()">🎯 Run Setup Wizard</button>
+      ` : ''}
       ${state.interviewers.filter(int => int.name).map(int => `
         <div style="display:flex;align-items:center;gap:4px">
           <button class="interviewer-btn ${int.id === state.selectedInterviewerId ? 'active' : ''}"
@@ -2878,7 +2887,7 @@ function renderModal() {
         <div>
           <div class="modal-section-title">Setup Wizard</div>
           <div style="font-size:13px;color:var(--text2);margin-bottom:8px">Re-run the onboarding wizard to update your job description, upload new interviewer LinkedIn PDFs, and regenerate profiles and Market POV.</div>
-          <button class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="if(confirm('Re-run the setup wizard? Your stories will be kept.')){state.onboardingComplete=false;state.marketPOV=null;state.interviewers.forEach(i=>{i.cheatsheet=null});appInitialized=false;saveState();closeModal();renderOnboarding()}">🔄 Run Setup Wizard</button>
+          <button class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="if(confirm('Re-run the setup wizard? Your stories will be kept.')){state.onboardingComplete=false;state.marketPOV=null;state.interviewers.forEach(i=>{i.cheatsheet=null});saveState();closeModal();launchWizard()}">🔄 Run Setup Wizard</button>
         </div>
 
         <div>
@@ -3969,6 +3978,12 @@ function printMatrix() {
 // MARKET POV — SWOT ANALYSIS
 // ============================================================
 function openMarketPOV() {
+  if (!state.jobDescription) {
+    if (confirm('Market POV requires a job description. Run the Setup Wizard now?')) {
+      launchWizard();
+    }
+    return;
+  }
   if (!state.marketPOV) {
     showToast('Generating Market POV...');
     generateMarketPOV().then(() => { saveState(); openMarketPOV(); }).catch(e => showToast('Failed: ' + e.message));
@@ -4217,32 +4232,32 @@ document.addEventListener('keydown', (e) => {
 (async function() {
   try {
     console.log('Bootstrap starting, supa:', !!supa);
+
     if (!supa) {
-      console.warn('Running in local-only mode (no Supabase)');
-      loadState();
-      const hasData = state.stories.length > 0 || state.interviewers.some(i => i.name);
-      if (!state.onboardingComplete && !hasData) {
-        renderOnboarding();
-      } else {
-        document.body.innerHTML = '<div id="app" class="app"></div>';
-        attachKeyboardListener();
-        render();
-      }
+      // Supabase CDN failed — show error, can't proceed without auth
+      document.body.innerHTML = `
+        <div class="auth-screen">
+          <div class="auth-card">
+            <div class="auth-logo">⚡ Loop Recall</div>
+            <div class="auth-subtitle">Failed to connect to authentication service. Please check your internet connection and refresh.</div>
+            <button class="auth-btn auth-btn-primary" onclick="location.reload()">Retry</button>
+          </div>
+        </div>`;
       return;
     }
 
-    console.log('Checking session...');
-    // Listen for auth state changes
+    // Listen for auth state changes (handles login/logout events)
     supa.auth.onAuthStateChange(async (event, session) => {
       try {
         console.log('Auth state change:', event);
-        if (session && session.user) {
-          currentUser = session.user;
-          await initApp();
-        } else {
+        if (event === 'SIGNED_OUT') {
           currentUser = null;
           appInitialized = false;
           renderAuthScreen();
+        } else if (event === 'SIGNED_IN' && session && session.user) {
+          currentUser = session.user;
+          appInitialized = false;
+          await initApp();
         }
       } catch(e) { console.error('Auth state change error:', e); }
     });
@@ -4258,7 +4273,7 @@ document.addEventListener('keydown', (e) => {
     }
   } catch(e) {
     console.error('Bootstrap error:', e);
-    document.body.innerHTML = '<div style="padding:40px;color:#fff;font-family:sans-serif"><h2>Debug Error</h2><pre style="color:#ff6b6b">' + e.message + '\n' + e.stack + '</pre></div>';
+    document.body.innerHTML = '<div style="padding:40px;color:#fff;font-family:sans-serif"><h2>Error</h2><pre style="color:#ff6b6b">' + e.message + '</pre><button onclick="location.reload()" style="margin-top:20px;padding:10px 20px;font-size:14px;cursor:pointer">Retry</button></div>';
   }
 })();
 </script>
